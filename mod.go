@@ -14,8 +14,3 @@ type Task struct {
 	Description string `json:"description"`
 	Status      Status `json:"status"`
 }
-
-type TaskStore struct {
-	tasks     []Task
-	idCounter int
-}
