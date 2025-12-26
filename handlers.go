@@ -24,3 +24,13 @@ func (t *TaskStore) GetTaskByID(id int) (*Task, bool) {
 	}
 	return nil, false
 }
+
+func (t *TaskStore) CreateTask(task Task) Task {
+	t.idCounter++
+	task.ID = t.idCounter
+	if task.Status != "" {
+		task.Status = StatusNew
+	}
+	t.tasks = append(t.tasks, task)
+	return task
+}
