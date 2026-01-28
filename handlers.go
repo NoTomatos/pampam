@@ -2,10 +2,11 @@ package main
 
 import (
 	"net/http"
+	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func (s Status) IsStatusValid() bool {
@@ -13,6 +14,26 @@ func (s Status) IsStatusValid() bool {
 		return true
 	}
 	return false
+}
+
+func (e Email) IsEmailValid() bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(string(e))
+}
+
+func (u *User) HashPassword() error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	u.Hash = string(hash)
+	u.Password = ""
+	return nil
+}
+
+func (u *User) CheckPassword(pw string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(u.Hash), []byte(pw))
+	return err == nil
 }
 
 func GetAllTasks(c *gin.Context) {
@@ -112,24 +133,6 @@ func DeleteTask(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{
 		"error": "задача не найдена",
 	})
-}
-
-func (e Email) IsEmailValid() bool {
-	strE := string(e)
-	i := strings.Index(strE, "@")
-	newE := strings.ToLower(strE)
-	if len(strE) < 3 {
-		return false
-	}
-	for _, ee := range emails {
-		if strings.ToLower(string(ee)) == newE {
-			return false
-		}
-	}
-	if i > 0 && i < (len(strE)-1) && strings.Count(strE, "@") == 1 && !strings.Contains(strE, " ") {
-		return true
-	}
-	return false
 }
 
 func GetAllUsers(c *gin.Context) {

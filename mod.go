@@ -22,6 +22,7 @@ type User struct {
 	Name     string `json:"name"`
 	Email    Email  `json:"email"`
 	Password string `json:"password"`
+	Hash     string `json:"-" db:"password_hash"`
 }
 
 var (
