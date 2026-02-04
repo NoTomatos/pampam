@@ -37,6 +37,14 @@ func (u *User) CheckPassword(pw string) bool {
 }
 
 func GetAllTasks(c *gin.Context) {
+	ctx := c.Request.Context()
+	tasks, err := storage.GetAllTasks(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "ошибка при получении задач",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, tasks)
 }
 
@@ -57,9 +65,16 @@ func CreateTask(c *gin.Context) {
 	if task.Status == "" || !task.Status.IsStatusValid() {
 		task.Status = StatusNew
 	}
-	idCounter++
-	task.ID = idCounter
-	tasks = append(tasks, task)
+
+	ctx := c.Request.Context()
+	err := storage.CreateTask(ctx, &task)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "ошибка при создании задачи",
+		})
+		return
+	}
+
 	c.JSON(http.StatusCreated, task)
 }
 
@@ -71,15 +86,23 @@ func GetTaskByID(c *gin.Context) {
 		})
 		return
 	}
-	for _, task := range tasks {
-		if task.ID == id {
-			c.JSON(http.StatusOK, task)
-			return
+
+	ctx := c.Request.Context()
+	task, err := storage.GetTaskByID(ctx, id)
+	if err != nil {
+		if err == ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "задача не найдена",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "ошибка при получении задачи",
+			})
 		}
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{
-		"error": "задача не найдена",
-	})
+
+	c.JSON(http.StatusOK, task)
 }
 
 func UpdateTask(c *gin.Context) {
@@ -90,6 +113,7 @@ func UpdateTask(c *gin.Context) {
 		})
 		return
 	}
+
 	var updTask Task
 	if err := c.ShouldBindJSON(&updTask); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -97,20 +121,35 @@ func UpdateTask(c *gin.Context) {
 		})
 		return
 	}
-	for i, task := range tasks {
-		if task.ID == id {
-			updTask.ID = id
-			if updTask.Status == "" || !updTask.Status.IsStatusValid() {
-				updTask.Status = task.Status
-			}
-			tasks[i] = updTask
-			c.JSON(http.StatusOK, updTask)
-			return
+
+	updTask.ID = id
+
+	if updTask.Status != "" && !updTask.Status.IsStatusValid() {
+		ctx := c.Request.Context()
+		currentTask, err := storage.GetTaskByID(ctx, id)
+		if err == nil && currentTask != nil {
+			updTask.Status = currentTask.Status
+		} else {
+			updTask.Status = StatusNew
 		}
 	}
-	c.JSON(http.StatusNotFound, gin.H{
-		"error": "задача не найдена",
-	})
+
+	ctx := c.Request.Context()
+	err = storage.UpdateTask(ctx, &updTask)
+	if err != nil {
+		if err == ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "задача не найдена",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "ошибка при обновлении задачи",
+			})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, updTask)
 }
 
 func DeleteTask(c *gin.Context) {
@@ -121,54 +160,82 @@ func DeleteTask(c *gin.Context) {
 		})
 		return
 	}
-	for i, task := range tasks {
-		if task.ID == id {
-			tasks = append(tasks[:i], tasks[i+1:]...)
-			c.JSON(http.StatusOK, gin.H{
-				"message": "задача удалена",
+
+	ctx := c.Request.Context()
+	err = storage.DeleteTask(ctx, id)
+	if err != nil {
+		if err == ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "задача не найдена",
 			})
-			return
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "ошибка при удалении задачи",
+			})
 		}
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{
-		"error": "задача не найдена",
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "задача удалена",
 	})
 }
 
 func GetAllUsers(c *gin.Context) {
+	ctx := c.Request.Context()
+	users, err := storage.GetAllUsers(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "ошибка при получении пользователей",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, users)
 }
 
 func CreateUser(c *gin.Context) {
 	var user User
+
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "неверный формат JSON",
 		})
 		return
 	}
+
 	if user.Name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "имя не задано",
 		})
 		return
 	}
-	if user.Email == "" || !user.Email.IsEmailValid() {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "неверный формат email или такой email уже есть",
-		})
-		return
-	}
+
 	if user.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "пароль не задан",
 		})
 		return
 	}
-	idUser++
-	emails = append(emails, user.Email)
-	user.ID = idUser
-	users = append(users, user)
+
+	if !user.Email.IsEmailValid() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "неверный формат email",
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+	err := storage.CreateUser(ctx, &user)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	user.Hash = ""
+	user.Password = ""
+
 	c.JSON(http.StatusCreated, user)
 }
 
@@ -180,15 +247,23 @@ func GetUserByID(c *gin.Context) {
 		})
 		return
 	}
-	for _, user := range users {
-		if user.ID == id {
-			c.JSON(http.StatusOK, user)
-			return
+
+	ctx := c.Request.Context()
+	user, err := storage.GetUserByID(ctx, id)
+	if err != nil {
+		if err == ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "пользователь не найден",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "ошибка при получении пользователя",
+			})
 		}
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{
-		"error": "пользователь не найден",
-	})
+
+	c.JSON(http.StatusOK, user)
 }
 
 func UpdateUser(c *gin.Context) {
@@ -199,30 +274,44 @@ func UpdateUser(c *gin.Context) {
 		})
 		return
 	}
+
 	var updUser User
+
+	if !updUser.Email.IsEmailValid() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "неверный формат email",
+		})
+		return
+	}
+
 	if err := c.ShouldBindJSON(&updUser); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "неверный формат JSON",
 		})
 		return
 	}
-	for i, user := range users {
-		if user.ID == id {
-			updUser.ID = id
-			if updUser.Email == "" || !updUser.Email.IsEmailValid() {
-				updUser.Email = user.Email
-			}
-			if user.Name == "" {
-				updUser.Name = user.Name
-			}
-			users[i] = updUser
-			c.JSON(http.StatusOK, updUser)
-			return
+
+	updUser.ID = id
+
+	ctx := c.Request.Context()
+	err = storage.UpdateUser(ctx, &updUser)
+	if err != nil {
+		if err == ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "пользователь не найден",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "ошибка при обновлении пользователя",
+			})
 		}
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{
-		"error": "пользователь не найден",
-	})
+
+	updUser.Hash = ""
+	updUser.Password = ""
+
+	c.JSON(http.StatusOK, updUser)
 }
 
 func DeleteUser(c *gin.Context) {
@@ -233,16 +322,23 @@ func DeleteUser(c *gin.Context) {
 		})
 		return
 	}
-	for i, user := range users {
-		if user.ID == id {
-			users = append(users[:i], users[i+1:]...)
-			c.JSON(http.StatusOK, gin.H{
-				"message": "пользователь удалён",
+
+	ctx := c.Request.Context()
+	err = storage.DeleteUser(ctx, id)
+	if err != nil {
+		if err == ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "пользователь не найден",
 			})
-			return
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "ошибка при удалении пользователя",
+			})
 		}
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{
-		"error": "пользователь не найден",
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "пользователь удалён",
 	})
 }

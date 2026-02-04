@@ -5,9 +5,9 @@ type Status string
 type Email string
 
 const (
-	StatusNew        Status = "Новая задача"
-	StatusInProgress Status = "Задача в процессе"
-	StatusCompleted  Status = "Задача выполнена!"
+	StatusNew        Status = "new"
+	StatusInProgress Status = "in_progress"
+	StatusCompleted  Status = "completed"
 )
 
 type Task struct {
@@ -24,11 +24,3 @@ type User struct {
 	Password string `json:"password"`
 	Hash     string `json:"-" db:"password_hash"`
 }
-
-var (
-	tasks     []Task
-	idCounter int
-	users     []User
-	idUser    int
-	emails    []Email
-)
